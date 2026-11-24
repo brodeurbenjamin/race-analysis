@@ -10,10 +10,12 @@
   :root {
     --bg:#f6f7f9; --card:#fff; --text:#16181d; --muted:#6a7280; --line:#e3e6eb;
     --accent:#e4572e; --mark:#e4572e; --warn:#9a5b00; --warn-bg:#fff3d6;
+    --s1:#e4572e; --s2:#2a78d6; --s3:#1baf7a;
   }
   @media (prefers-color-scheme: dark) {
     :root { --bg:#0e1116; --card:#171b22; --text:#eef0f3; --muted:#8e97a6; --line:#262c36;
-            --accent:#ff7a50; --mark:#ec6438; --warn:#f0b44c; --warn-bg:#2a2214; }
+            --accent:#ff7a50; --mark:#ec6438; --warn:#f0b44c; --warn-bg:#2a2214;
+            --s1:#ec6438; --s2:#3987e5; --s3:#199e70; }
   }
   * { box-sizing:border-box } [hidden] { display:none !important }
   body { margin:0; background:var(--bg); color:var(--text);
@@ -59,6 +61,23 @@
   .tip { position:fixed; pointer-events:none; background:var(--text); color:var(--card); font-size:12px;
          padding:6px 8px; border-radius:6px; z-index:5; max-width:220px }
   ul.ins { margin:0; padding-left:18px } ul.ins li { margin:6px 0 }
+  input[type=text], input[type=number], select { display:block; width:100%; min-width:0; height:44px; padding:0 10px;
+         border:1px solid var(--line); border-radius:8px; background:var(--bg); color:var(--text); font:inherit; font-size:16px }
+  .grid3 { display:grid; gap:12px; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); margin-bottom:14px }
+  .grid3 > div { min-width:0 }
+  button.ghost { background:transparent; color:var(--accent); border:1px solid var(--accent); padding:7px 12px; font-size:14px }
+  .row { display:flex; gap:10px; flex-wrap:wrap; align-items:center }
+  .race { display:flex; gap:10px; flex-wrap:wrap; align-items:center; justify-content:space-between;
+          padding:10px 0; border-top:1px solid var(--line) }
+  .race:first-child { border-top:0 }
+  .race .who { min-width:0 } .race .who b { display:block } .race .who span { color:var(--muted); font-size:13px }
+  .key { display:inline-flex; align-items:center; gap:6px; margin-right:14px; font-size:13px; color:var(--text) }
+  .key svg { width:16px; height:12px }
+  .s1 { stroke:var(--s1) } .s2 { stroke:var(--s2) } .s3 { stroke:var(--s3) }
+  .f1 { fill:var(--s1) } .f2 { fill:var(--s2) } .f3 { fill:var(--s3) }
+  .dot { stroke:var(--card); stroke-width:2 }
+  .chart .tag { font-size:11px; font-weight:600; fill:var(--text) }
+  td.better { font-weight:600 }
   footer { color:var(--muted); font-size:12px; text-align:center; margin-top:28px }
 </style>
 </head>
@@ -67,9 +86,24 @@
   <p class="crumb"><a href="/">← Hybrid_by_Ben</a></p>
   <h1>Race Analysis</h1>
   <p class="sub">Line up your Garmin file with your official HYROX splits: pace, heart rate, power and stride for every run, and heart rate for every station.</p>
-  <p class="privacy">🔒 Everything happens on this device. Your file and splits are never uploaded or saved.</p>
+  <p class="privacy">🔒 Everything happens on this device. Your file and splits are never uploaded. If you save a race, only its results (not the file) are kept in this browser, on this device.</p>
+
+  <div class="card" id="savedCard" hidden>
+    <h2>Your saved races</h2>
+    <div id="saved"></div>
+    <p class="row" style="margin:12px 0 0"><button type="button" id="compare">Compare saved races</button></p>
+    <p class="note">Up to 3 races. Saved in this browser only; clearing your browser data removes them.</p>
+  </div>
 
   <form class="card" id="form" novalidate>
+    <h2>Add a race</h2>
+    <div class="grid3">
+      <div><label for="rname">Race name</label><input type="text" id="rname" maxlength="30" placeholder="e.g. Boston Open"></div>
+      <div><label for="division">Division</label>
+        <select id="division"><option value="open">Open</option><option value="pro">Pro</option><option value="doubles">Doubles</option><option value="relay">Relay</option></select></div>
+      <div><label for="runkm">Run lap length (km)</label><input type="number" id="runkm" value="1.00" min="0.5" max="1.5" step="0.01" inputmode="decimal"></div>
+    </div>
+    <p class="note" style="margin:-6px 0 14px">Courses differ. Leave 1.00 unless you know this venue's run lap was longer or shorter; it sets your true pace, power and step length.</p>
     <div class="grid2">
       <div>
         <label for="fit">Garmin activity file (.fit)</label>
@@ -85,7 +119,37 @@
     <p class="note" id="msg" role="status"></p>
   </form>
 
+  <div id="cmp" hidden>
+    <div class="card">
+      <h2 id="cmpTitle">Comparing races</h2>
+      <div class="scroll"><table id="cmpTotals"></table></div>
+    </div>
+    <div class="card">
+      <h2>What stands out</h2>
+      <ul class="ins" id="cmpInsights"></ul>
+    </div>
+    <div class="card">
+      <h2>Runs</h2>
+      <p id="cmpKey" style="margin:0 0 10px"></p>
+      <div class="charts" id="cmpCharts"></div>
+      <p class="note">Each race's short-course runs (usually Run 1) are left out of its lines. <b>Pace vs own average</b> compares each run with that race's Runs 2–7 average, so a course whose run lap isn't exactly 1 km doesn't distort it. Power is corrected to each race's true pace and is approximate.</p>
+    </div>
+    <div class="card">
+      <h2>Runs table</h2>
+      <div class="scroll"><table id="cmpRuns"></table></div>
+    </div>
+    <div class="card">
+      <h2>Stations</h2>
+      <div class="scroll"><table id="cmpStations"></table></div>
+      <p class="note" id="cmpDivNote"></p>
+    </div>
+  </div>
+
   <div id="out" hidden>
+    <div class="card">
+      <h2 id="outTitle">This race</h2>
+      <p class="row" style="margin:0"><button type="button" id="save">Save on this device</button><span class="note" id="saveMsg" style="margin:0"></span></p>
+    </div>
     <div class="tiles" id="tiles"></div>
 
     <div class="card">
@@ -113,7 +177,7 @@
     <div class="card">
       <h2>How the watch laps were matched</h2>
       <div class="scroll"><table id="laps"></table></div>
-      <p class="note">Runs are the long laps at running cadence; each station is the longest lap between two runs. Watch laps are button presses, so they differ a little from the official mats.</p>
+      <p class="note">Runs are the long laps at running cadence; each station is the longest lap between two runs. When a lap press split a segment in two (seen at Boston for the sled push and Run 8), the laps are joined. Watch laps are button presses, so they differ a little from the official mats.</p>
     </div>
   </div>
 
@@ -125,17 +189,33 @@
 // Garmin's own FIT reader, pinned. It runs here in the browser on the file you
 // pick; nothing is sent anywhere.
 import { Decoder, Stream } from 'https://cdn.jsdelivr.net/npm/@garmin/fitsdk@21.222.0/src/index.js';
-import { parseSplits, fromFitMessages, analyse, clock } from './analysis.js';
+import { parseSplits, fromFitMessages, analyse, clock, summarise, compareInsights, relativeRuns } from './analysis.js';
 
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
 const fmt = (v, d = 0) => (v == null ? '–' : v.toFixed(d));
 const say = (t, err) => { $('msg').textContent = t; $('msg').className = 'note' + (err ? ' err' : ''); };
 
+// Saved races: results only (see summarise() in analysis.js), in this
+// browser's storage for hybridbyben.com. Never uploaded. Up to 3.
+const STORE = 'hbb.race-analysis.races.v1';
+const MAX_SAVED = 3;
+const loadSaved = () => { try { return JSON.parse(localStorage.getItem(STORE)) || []; } catch { return []; } };
+const storeSaved = (list) => { try { localStorage.setItem(STORE, JSON.stringify(list)); return true; } catch { return false; } };
+let current = null; // the race on screen, as a summary
+
+const DIVISIONS = { open: 'Open', pro: 'Pro', doubles: 'Doubles', relay: 'Relay' };
+const dateLabel = (iso) => (iso ? new Date(iso).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' }) : '');
+const raceTotal = (r) => (r.totals.runs ?? 0) + (r.totals.stations ?? 0) + (r.totals.roxzone ?? 0);
+// Race-length times: 1:22:11 rather than 82:11.
+const hms = (s) => (s == null ? '–' : s >= 3600 ? `${Math.floor(s / 3600)}:${clock(s % 3600).padStart(5, '0')}` : clock(s));
+
 $('form').addEventListener('submit', async (e) => {
   e.preventDefault();
   const file = $('fit').files[0];
   if (!file) return say('Choose your .fit file first.', true);
+  const runKm = Number($('runkm').value);
+  if (!(runKm >= 0.5 && runKm <= 1.5)) return say('Run lap length should be between 0.50 and 1.50 km (usually 1.00).', true);
   const splits = parseSplits($('splits').value);
   const found = splits.runs.filter((x) => x != null).length;
   if (found < 8) return say(`Found ${found} of 8 run times in the splits. Paste all 8 runs ("Run 1  3:39" and so on).`, true);
@@ -146,8 +226,14 @@ $('form').addEventListener('submit', async (e) => {
     if (!dec.isFIT()) throw new Error("That file isn't a Garmin .fit file.");
     const { messages, errors } = dec.read({ convertDateTimesToDates: true });
     if (errors.length && !messages.recordMesgs?.length) throw new Error(`Couldn't read the file (${errors[0].message}).`);
-    const a = analyse(fromFitMessages(messages), splits);
-    render(a);
+    const fit = fromFitMessages(messages);
+    const a = analyse(fit, splits, { runKm });
+    const name = $('rname').value.trim().replace(/\s+/g, ' ').slice(0, 30) || `Race on ${dateLabel(fit.start)}`;
+    current = summarise(a, { id: `${Date.now()}`, name, division: $('division').value, date: fit.start.toISOString() });
+    $('cmp').hidden = true;
+    render(current);
+    $('saveMsg').textContent = '';
+    $('save').hidden = false;
     say(a.match.ok ? '' : 'Some laps couldn\'t be matched to runs and stations; check the lap table at the bottom.', !a.match.ok);
   } catch (err) {
     say(err.message || String(err), true);
@@ -157,6 +243,7 @@ $('form').addEventListener('submit', async (e) => {
 
 function render(a) {
   $('out').hidden = false;
+  $('outTitle').textContent = `${a.name} · ${DIVISIONS[a.division] || ''} · ${dateLabel(a.date)}${a.runKm !== 1 ? ` · run lap ${a.runKm.toFixed(2)} km` : ''}`;
   const ok = a.runs.filter((r) => !r.suspect);
   const avgOf = (k) => { const v = ok.map((r) => r[k]).filter((x) => x != null); return v.length ? v.reduce((s, x) => s + x, 0) / v.length : null; };
   $('tiles').innerHTML = [
@@ -187,8 +274,148 @@ function render(a) {
       <td>${fmt(s.hr)}${s.hr != null && !s.hrReliable ? '<span class="flag">⚠ wrist HR unreliable</span>' : ''}</td><td>${fmt(s.hrMax)}</td></tr>`).join('');
 
   $('laps').innerHTML = `<tr><th>Segment</th><th>Watch lap</th><th>Watch time</th><th>Official</th></tr>` +
-    [...a.runs.map((r) => [r.name, r.lap, r.watchTime, r.official]), ...a.stations.map((s) => [s.name, s.lap, s.watchTime, s.official])]
-      .map(([n, lap, w, o]) => `<tr><td>${esc(n)}</td><td>${lap == null ? '<span class="flag">⚠ not found</span>' : `#${lap + 1}`}</td><td>${clock(w)}</td><td>${clock(o)}</td></tr>`).join('');
+    [...a.runs.map((r) => [r.name, r.laps, r.watchTime, r.official]), ...a.stations.map((s) => [s.name, s.laps, s.watchTime, s.official])]
+      .map(([n, laps, w, o]) => `<tr><td>${esc(n)}</td><td>${!laps?.length ? '<span class="flag">⚠ not found</span>' : laps.map((i) => `#${i + 1}`).join(' + ')}</td><td>${clock(w)}</td><td>${clock(o)}</td></tr>`).join('');
+}
+
+// ---------- saving and comparing ----------
+
+$('save').addEventListener('click', () => {
+  if (!current) return;
+  const list = loadSaved();
+  if (list.some((r) => r.id === current.id)) return ($('saveMsg').textContent = 'Already saved.');
+  if (list.length >= MAX_SAVED) return ($('saveMsg').textContent = `You have ${MAX_SAVED} saved races. Remove one above to save this one.`);
+  list.push(current);
+  if (!storeSaved(list)) return ($('saveMsg').textContent = "Couldn't save: this browser blocks storage (private window?).");
+  $('saveMsg').textContent = 'Saved on this device.';
+  $('save').hidden = true;
+  showSaved();
+});
+
+function showSaved() {
+  const list = loadSaved();
+  $('savedCard').hidden = !list.length;
+  $('compare').hidden = list.length < 2;
+  $('saved').innerHTML = list.map((r) => `<div class="race"><div class="who"><b>${esc(r.name)}</b>
+      <span>${esc(DIVISIONS[r.division] || '')} · ${esc(dateLabel(r.date))} · ${hms(raceTotal(r))} (sum of splits)</span></div>
+      <div class="row"><button type="button" class="ghost" data-view="${esc(r.id)}">View</button>
+      <button type="button" class="ghost" data-forget="${esc(r.id)}">Remove</button></div></div>`).join('');
+}
+
+$('saved').addEventListener('click', (e) => {
+  const view = e.target.closest('[data-view]')?.dataset.view;
+  const forget = e.target.closest('[data-forget]')?.dataset.forget;
+  const list = loadSaved();
+  if (view) {
+    current = list.find((r) => r.id === view);
+    if (!current) return;
+    $('cmp').hidden = true;
+    render(current);
+    $('save').hidden = true;
+    $('saveMsg').textContent = 'Saved on this device.';
+    $('out').scrollIntoView({ behavior: 'smooth' });
+  }
+  if (forget) {
+    storeSaved(list.filter((r) => r.id !== forget));
+    if (current?.id === forget) { $('save').hidden = false; $('saveMsg').textContent = ''; }
+    showSaved();
+    if (!$('cmp').hidden) renderCompare();
+  }
+});
+
+$('compare').addEventListener('click', () => {
+  renderCompare();
+  $('cmp').scrollIntoView({ behavior: 'smooth' });
+});
+
+function renderCompare() {
+  const races = loadSaved();
+  if (races.length < 2) { $('cmp').hidden = true; return; }
+  $('cmp').hidden = false;
+  $('out').hidden = true;
+  const S = races.map((r, k) => `s${k + 1}`);
+  $('cmpTitle').textContent = `Comparing ${races.map((r) => r.name).join(', ')}`;
+  const fmtFade = (f) => (f == null ? '–' : `${f >= 0 ? '+' : ''}${f.toFixed(1)}%`);
+  const rows = [
+    ['Division', (r) => DIVISIONS[r.division] || ''], ['Date', (r) => dateLabel(r.date)],
+    ['Total (sum of splits)', (r) => hms(raceTotal(r))], ['Runs', (r) => clock(r.totals.runs)],
+    ['Stations', (r) => clock(r.totals.stations)], ['Roxzone', (r) => clock(r.totals.roxzone)],
+    ['Run fade (R2 → R7)', (r) => fmtFade(r.fade)], ['Run lap length', (r) => `${r.runKm.toFixed(2)} km`],
+  ];
+  $('cmpTotals').innerHTML = `<tr><th></th>${races.map((r) => `<th>${esc(r.name)}</th>`).join('')}</tr>` +
+    rows.map(([k, f]) => `<tr><td>${esc(k)}</td>${races.map((r) => `<td>${esc(f(r))}</td>`).join('')}</tr>`).join('');
+  $('cmpInsights').innerHTML = compareInsights(races).map((s) => `<li>${esc(s)}</li>`).join('');
+
+  const shapes = ['circle', 'square', 'diamond'];
+  $('cmpKey').innerHTML = races.map((r, k) => `<span class="key"><svg viewBox="0 0 16 12" aria-hidden="true"><line x1="0" x2="16" y1="6" y2="6" class="${S[k]}" stroke-width="2"/>${marker(shapes[k], 8, 6, `f${k + 1} dot`)}</svg>${esc(r.name)}</span>`).join('');
+  const rel = races.map((r) => relativeRuns(r.runs));
+  const charts = [
+    ['Pace (official, higher = faster)', (r, i) => r.runs[i].pace, (v) => `${clock(v)} /km`, true],
+    ['Pace vs own average (higher = faster)', (r, i, k) => rel[k][i], (v) => `${((v - 1) * 100 >= 0 ? '+' : '') + ((v - 1) * 100).toFixed(1)}%`, true],
+    ['Heart rate (average)', (r, i) => r.runs[i].hr, (v) => `${fmt(v)} bpm`],
+    ['Step length (true)', (r, i) => r.runs[i].step, (v) => `${fmt(v, 2)} m`],
+    ['Cadence', (r, i) => r.runs[i].spm, (v) => `${fmt(v)} spm`],
+    ['Power (corrected, approximate)', (r, i) => r.runs[i].power, (v) => `${fmt(v)} W`],
+  ];
+  $('cmpCharts').innerHTML = charts.map(([t, get, label, invert]) => multiChart(t, races, get, label, invert)).join('');
+
+  $('cmpRuns').innerHTML = `<tr><th>Run</th>${races.map((r) => `<th>${esc(r.name)}</th>`).join('')}${races.length === 2 ? '<th>Difference</th>' : ''}</tr>` +
+    races[0].runs.map((_, i) => {
+      const t = races.map((r) => r.runs[i]?.official ?? null);
+      const diff = races.length === 2 && t[0] != null && t[1] != null ? t[1] - t[0] : null;
+      return `<tr><td>Run ${i + 1}</td>${races.map((r) => `<td>${clock(r.runs[i]?.official)}${r.runs[i]?.suspect ? '<span class="flag">⚠ short?</span>' : ''} · ${fmt(r.runs[i]?.hr)} bpm</td>`).join('')}${races.length === 2 ? `<td>${diff == null ? '–' : (diff > 0 ? '+' : diff < 0 ? '−' : '±') + clock(Math.abs(diff))}</td>` : ''}</tr>`;
+    }).join('');
+
+  $('cmpStations').innerHTML = `<tr><th>Station</th>${races.map((r) => `<th>${esc(r.name)}</th>`).join('')}</tr>` +
+    races[0].stations.map((s0, k) => {
+      const times = races.map((r) => r.stations[k]?.official ?? null);
+      const best = Math.min(...times.filter((x) => x != null));
+      return `<tr><td>${esc(s0.name)}</td>${races.map((r, j) => `<td class="${times[j] === best && races.length > 1 ? 'better' : ''}">${clock(times[j])}${times[j] === best ? ' ✓' : ''}</td>`).join('')}</tr>`;
+    }).join('');
+  const divs = new Set(races.map((r) => r.division));
+  $('cmpDivNote').textContent = (divs.size > 1 ? 'These races include different divisions: Pro sleds, lunges and wall balls are heavier, so station times differ for that reason too. ' : '') +
+    '✓ marks the fastest time for each station.';
+}
+
+// Marker shapes, so each race is told apart by shape as well as colour.
+function marker(shape, x, y, cls) {
+  if (shape === 'square') return `<rect class="${cls}" x="${x - 4}" y="${y - 4}" width="8" height="8"/>`;
+  if (shape === 'diamond') return `<path class="${cls}" d="M${x},${y - 5}L${x + 5},${y}L${x},${y + 5}L${x - 5},${y}Z"/>`;
+  return `<circle class="${cls}" cx="${x}" cy="${y}" r="4"/>`;
+}
+
+// One measure, one line per race (2-3), on a shared Run 1-8 axis. A race's
+// short-course runs are left out of its line. Each line is labelled with the
+// race name at its last point; every point has a hover readout.
+function multiChart(title, races, get, label, invert) {
+  const W = 300, H = 160, L = 6, R = 6, T = 14, B = 22;
+  const shapes = ['circle', 'square', 'diamond'];
+  const series = races.map((r, k) => r.runs.map((run, i) => (run.suspect ? null : get(r, i, k))));
+  const all = series.flat().filter((v) => v != null && Number.isFinite(v));
+  if (!all.length) return `<div class="chart"><h3>${esc(title)}</h3><p class="note">Not in these races.</p></div>`;
+  let lo = Math.min(...all), hi = Math.max(...all);
+  const pad = (hi - lo) * 0.12 || Math.abs(hi) * 0.05 || 1;
+  lo -= pad; hi += pad;
+  const x = (i) => L + (i * (W - L - R)) / 7;
+  const y = (v) => (invert ? T + ((v - lo) / (hi - lo)) * (H - T - B) : H - B - ((v - lo) / (hi - lo)) * (H - T - B));
+  const lines = series.map((vals, k) => {
+    const pts = vals.map((v, i) => (v == null ? null : [x(i), y(v), v, i])).filter(Boolean);
+    const d = pts.map((p, j) => `${j ? 'L' : 'M'}${p[0].toFixed(1)},${p[1].toFixed(1)}`).join('');
+    const last = pts[pts.length - 1];
+    const tag = last ? `<text class="tag" x="${last[0] - 8}" y="${last[1] + (k % 2 ? 14 : -8)}" text-anchor="end">${esc(races[k].name.split(' ')[0])}</text>` : '';
+    return `<path class="ln s${k + 1}" d="${d}" style="stroke:var(--s${k + 1})"/>` +
+      pts.map((p) => marker(shapes[k], p[0], p[1], `f${k + 1} dot`)).join('') + tag;
+  }).join('');
+  const hits = Array.from({ length: 8 }, (_, i) => {
+    const parts = races.map((r, k) => (series[k][i] == null ? null : `${r.name}: ${label(series[k][i])}`)).filter(Boolean);
+    return parts.length ? `<rect class="hit" x="${x(i) - 16}" y="${T - 10}" width="32" height="${H - T - B + 20}" data-tip="${esc(`Run ${i + 1} · ${parts.join(' · ')}`)}"/>` : '';
+  }).join('');
+  return `<div class="chart"><h3>${esc(title)}</h3>
+    <svg viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(title)} for runs 1 to 8, one line per race">
+      <line class="axis" x1="${L}" x2="${W - R}" y1="${H - B}" y2="${H - B}"/>
+      ${Array.from({ length: 8 }, (_, i) => `<text x="${x(i)}" y="${H - 6}" text-anchor="middle">${i + 1}</text>`).join('')}
+      ${lines}${hits}
+    </svg></div>`;
 }
 
 // A small line chart: x = Run 1..8, one series. A flagged run (e.g. a short
@@ -231,8 +458,11 @@ const show = (e) => {
   tip.style.left = Math.min(p.clientX + 12, innerWidth - 230) + 'px';
   tip.style.top = p.clientY + 12 + 'px';
 };
-$('charts').addEventListener('pointermove', show);
-$('charts').addEventListener('pointerleave', () => { tip.hidden = true; });
+for (const id of ['charts', 'cmpCharts']) {
+  $(id).addEventListener('pointermove', show);
+  $(id).addEventListener('pointerleave', () => { tip.hidden = true; });
+}
+showSaved();
 </script>
 </body>
 </html>
