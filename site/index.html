@@ -78,6 +78,19 @@
   .dot { stroke:var(--card); stroke-width:2 }
   .chart .tag { font-size:11px; font-weight:600; fill:var(--text) }
   td.better { font-weight:600 }
+  .vh { position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0 0 0 0) }
+  .filebtn { display:inline-block; padding:10px 14px; border-radius:8px; border:1px solid var(--accent); color:var(--accent);
+             font-weight:600; cursor:pointer; margin:0 }
+  #shots:focus-visible + span, .filebtn:focus-within { outline:2px solid var(--accent) }
+  .splits { display:grid; gap:8px; grid-template-columns:repeat(auto-fill,minmax(150px,1fr)) }
+  .splits > div { min-width:0 }
+  .splits label { margin-bottom:2px; font-size:12px }
+  .splits input { font-variant-numeric:tabular-nums }
+  .splits input.bad { border-color:var(--accent); background:var(--warn-bg) }
+  .splits input.filled { border-color:var(--muted) }
+  .splits input.check { border:2px solid var(--warn); background:var(--warn-bg) }
+  .splits .why { display:block; font-size:11px; color:var(--warn); font-weight:600; margin-top:2px }
+  code { font-size:12px }
   footer { color:var(--muted); font-size:12px; text-align:center; margin-top:28px }
 </style>
 </head>
@@ -104,17 +117,29 @@
       <div><label for="runkm">Run lap length (km)</label><input type="number" id="runkm" value="1.00" min="0.5" max="1.5" step="0.01" inputmode="decimal"></div>
     </div>
     <p class="note" style="margin:-6px 0 14px">Courses differ. Leave 1.00 unless you know this venue's run lap was longer or shorter; it sets your true pace, power and step length.</p>
-    <div class="grid2">
-      <div>
-        <label for="fit">Garmin activity file (.fit)</label>
-        <input type="file" id="fit" accept=".fit">
-        <p class="note">Garmin Connect → the activity → ⚙ → Export Original. Unzip it if needed.</p>
-      </div>
-      <div>
-        <label for="splits">Official splits</label>
-        <textarea id="splits" placeholder="Paste from the results page, one per line, e.g.&#10;Run 1  3:39&#10;SkiErg  4:35&#10;Run 2  4:39&#10;Sled Push  3:48&#10;…&#10;Roxzone  6:51"></textarea>
-      </div>
+    <div style="margin-bottom:16px">
+      <label for="fit">Garmin activity file (.fit)</label>
+      <input type="file" id="fit" accept=".fit">
+      <p class="note">Garmin Connect → the activity → ⚙ → Export Original. Unzip it if needed.</p>
     </div>
+
+    <h3>Official splits</h3>
+    <p class="row" style="margin:6px 0 8px">
+      <label class="filebtn" for="shots">📷 Read from screenshots</label>
+      <input type="file" id="shots" accept="image/*" multiple class="vh">
+      <span class="note" id="shotMsg" style="margin:0"></span>
+    </p>
+    <p class="note" style="margin:0 0 12px">Screenshot your results (the HYROX app's splits list works well; take two if it doesn't fit on one screen, overlapping is fine) and pick them all at once. They're read on this device and never uploaded. The first time, the reader downloads about 10 MB from a public code library. Always check the times below.</p>
+    <div class="splits" id="grid"></div>
+    <p class="note" id="sumMsg"></p>
+    <details style="margin-top:10px">
+      <summary class="note" style="cursor:pointer">Or paste the splits as text</summary>
+      <textarea id="splits" placeholder="Run 1  3:39&#10;SkiErg  4:35&#10;Run 2  4:39&#10;Sled Push  3:48&#10;…&#10;Roxzone  6:51&#10;Overall  1:22:03"></textarea>
+      <p class="row" style="margin:8px 0 0"><button type="button" class="ghost" id="fillText">Fill the boxes from this text</button></p>
+      <p class="note">Accepted: one segment per line, a name then its time, e.g. <code>Run 1  3:39</code>, <code>SkiErg 00:04:35</code>, <code>Roxzone 6:51</code>, <code>Overall 1:22:03</code>.
+        Names like Ski, BBJ, Burpee Broad Jump, Farmers, Lunges, Wall Balls all work. Times as mm:ss or h:mm:ss.
+        Spaces, tabs or commas between them, so a spreadsheet or CSV copy works too. Anything after the time (a rank, a "PB") is ignored.</p>
+    </details>
     <p style="margin:14px 0 0"><button type="submit" id="go">Analyse</button></p>
     <p class="note" id="msg" role="status"></p>
   </form>
@@ -189,7 +214,7 @@
 // Garmin's own FIT reader, pinned. It runs here in the browser on the file you
 // pick; nothing is sent anywhere.
 import { Decoder, Stream } from 'https://cdn.jsdelivr.net/npm/@garmin/fitsdk@21.222.0/src/index.js';
-import { parseSplits, fromFitMessages, analyse, clock, summarise, compareInsights, relativeRuns } from './analysis.js';
+import { parseSplits, fromFitMessages, analyse, clock, toSeconds, summarise, compareInsights, relativeRuns } from './analysis.js';
 
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
@@ -210,15 +235,188 @@ const raceTotal = (r) => (r.totals.runs ?? 0) + (r.totals.stations ?? 0) + (r.to
 // Race-length times: 1:22:11 rather than 82:11.
 const hms = (s) => (s == null ? '–' : s >= 3600 ? `${Math.floor(s / 3600)}:${clock(s % 3600).padStart(5, '0')}` : clock(s));
 
+// ---------- splits: grid, text and screenshots ----------
+
+// Race order: Run 1, SkiErg, Run 2, ... Wall Balls, then Roxzone and Overall.
+const SEGMENTS = [];
+const STATION_ORDER = ['SkiErg', 'Sled Push', 'Sled Pull', 'Burpee Broad Jumps', 'Row', 'Farmers Carry', 'Sandbag Lunges', 'Wall Balls'];
+STATION_ORDER.forEach((s, k) => SEGMENTS.push({ key: `run${k}`, label: `Run ${k + 1}` }, { key: `st:${s}`, label: s }));
+SEGMENTS.push({ key: 'roxzone', label: 'Roxzone (total)' }, { key: 'overall', label: 'Overall (optional)' });
+$('grid').innerHTML = SEGMENTS.map((g, i) => `<div><label for="sp${i}">${esc(g.label)}</label>
+  <input type="text" id="sp${i}" data-key="${esc(g.key)}" inputmode="numeric" placeholder="m:ss" autocomplete="off"></div>`).join('');
+const cell = (key) => $('grid').querySelector(`[data-key="${CSS.escape(key)}"]`);
+
+// p: parsed splits. check: { key: note } for boxes to highlight (two
+// screenshot readings disagreed, or only one found a time).
+function fillGrid(p, mark = true, check = {}) {
+  let n = 0;
+  const set = (key, v) => {
+    if (v == null) return;
+    const c = cell(key);
+    c.value = hms(v);
+    c.classList.toggle('filled', mark && !check[key]);
+    c.classList.toggle('check', !!check[key]);
+    c.title = check[key] || '';
+    if (check[key]) c.parentElement.querySelector('.why')?.remove(), c.insertAdjacentHTML('afterend', `<span class="why">${esc(check[key])}</span>`);
+    n++;
+  };
+  p.runs.forEach((v, k) => set(`run${k}`, v));
+  for (const s of STATION_ORDER) set(`st:${s}`, p.stations[s]);
+  set('roxzone', p.roxzone);
+  set('overall', p.overall);
+  checkGrid();
+  return n;
+}
+
+// The grid as splits; marks boxes that hold something that isn't a time.
+function readGrid() {
+  const out = { runs: Array(8).fill(null), stations: {}, roxzone: null, overall: null };
+  for (const input of $('grid').querySelectorAll('input')) {
+    const raw = input.value.trim().replace(/\./g, ':'); // "4.35" -> "4:35"
+    const v = raw ? toSeconds(raw) : null;
+    input.classList.toggle('bad', !!raw && v == null);
+    const key = input.dataset.key;
+    if (key.startsWith('run')) out.runs[+key.slice(3)] = v;
+    else if (key.startsWith('st:')) { if (v != null) out.stations[key.slice(3)] = v; }
+    else out[key] = v;
+  }
+  return out;
+}
+
+// Cross-check: do the splits add up to the overall time?
+function checkGrid() {
+  const g = readGrid();
+  const parts = [...g.runs, ...STATION_ORDER.map((s) => g.stations[s] ?? null), g.roxzone];
+  const have = parts.filter((v) => v != null).length;
+  if (have < parts.length) return ($('sumMsg').textContent = `${have} of ${parts.length} splits filled in.`);
+  const sum = parts.reduce((a, b) => a + b, 0);
+  if (g.overall == null) return ($('sumMsg').textContent = `All splits filled in; they add up to ${hms(sum)}.`);
+  const gap = Math.abs(sum - g.overall);
+  $('sumMsg').textContent = gap <= 15
+    ? `✓ All splits filled in; they add up to ${hms(sum)}, within ${gap} s of the overall ${hms(g.overall)} (timing rounds a little).`
+    : `⚠ The splits add up to ${hms(sum)} but the overall is ${hms(g.overall)}, ${clock(gap)} apart. Check for a misread time.`;
+}
+$('grid').addEventListener('input', (e) => {
+  e.target.classList.remove('filled', 'check');
+  e.target.parentElement.querySelector('.why')?.remove();
+  checkGrid();
+});
+
+// Pasted or typed text fills the boxes as it changes, so the boxes always
+// show exactly what Analyse will use (no stale splits from an earlier race).
+$('splits').addEventListener('input', () => fillGrid(parseSplits($('splits').value)));
+$('fillText').addEventListener('click', () => {
+  const n = fillGrid(parseSplits($('splits').value));
+  say(n ? `Filled ${n} boxes from the text. Check them below.` : "Couldn't find any times in that text. See the accepted formats under it.", !n);
+});
+
+// Screenshots: read on this device with Tesseract.js (pinned, from jsDelivr).
+// Each image is cleaned first (text kept as black on white, bars and
+// backgrounds removed) and enlarged to about 2,400 px wide, which took reading
+// the HYROX app's splits list from 4 of 17 rows to all of them.
+const OCR = {
+  script: 'https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js',
+  workerPath: 'https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/worker.min.js',
+  corePath: 'https://cdn.jsdelivr.net/npm/tesseract.js-core@5.1.1',
+  langPath: 'https://cdn.jsdelivr.net/npm/@tesseract.js-data/eng@1.0.0/4.0.0_best_int',
+};
+let ocrWorker = null;
+async function getWorker() {
+  if (ocrWorker) return ocrWorker;
+  if (!window.Tesseract) await new Promise((res, rej) => {
+    const s = document.createElement('script');
+    s.src = OCR.script; s.onload = res; s.onerror = () => rej(new Error("Couldn't load the screenshot reader. Check your connection."));
+    document.head.appendChild(s);
+  });
+  ocrWorker = await window.Tesseract.createWorker('eng', 1, { workerPath: OCR.workerPath, corePath: OCR.corePath, langPath: OCR.langPath });
+  return ocrWorker;
+}
+
+// Two readings of the same screenshots: where they agree, take the time;
+// where they differ (or only one found it), take one and flag the box.
+function agree(a, b) {
+  const out = { runs: Array(8).fill(null), stations: {}, roxzone: null, overall: null };
+  const check = {};
+  const pick = (key, x, y, put) => {
+    if (x == null && y == null) return;
+    put(x ?? y);
+    if (x == null || y == null) check[key] = `Only one reading found ${hms(x ?? y)}: check`;
+    else if (x !== y) check[key] = `Read as ${hms(x)} or ${hms(y)}: check`;
+  };
+  a.runs.forEach((x, k) => pick(`run${k}`, x, b.runs[k], (v) => (out.runs[k] = v)));
+  for (const s of STATION_ORDER) pick(`st:${s}`, a.stations[s], b.stations[s], (v) => (out.stations[s] = v));
+  pick('roxzone', a.roxzone, b.roxzone, (v) => (out.roxzone = v));
+  pick('overall', a.overall, b.overall, (v) => (out.overall = v));
+  return { splits: out, check };
+}
+
+// Light text on a dark screen (most apps): keep near-white pixels. Dark text
+// on a light page: keep near-black pixels. Decided by the image's average
+// brightness.
+function cleanForOcr(img, cutoff) {
+  const scale = Math.min(2, Math.max(1, 2400 / img.naturalWidth));
+  const c = document.createElement('canvas');
+  c.width = Math.round(img.naturalWidth * scale); c.height = Math.round(img.naturalHeight * scale);
+  const ctx = c.getContext('2d', { willReadFrequently: true });
+  // Smooth enlarging, then a cut-off: with blocky enlarging Run 2 at Boston
+  // read 4:20 instead of 4:29; smooth enlarging read all 17 at cut-offs 170
+  // and 200, but 185 misread burpee broad jumps (4:53 for 4:33). So each
+  // screenshot is read at two cut-offs and disagreements are flagged.
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = 'high';
+  ctx.drawImage(img, 0, 0, c.width, c.height);
+  const d = ctx.getImageData(0, 0, c.width, c.height), px = d.data;
+  let lum = 0;
+  for (let i = 0; i < px.length; i += 64) lum += 0.299 * px[i] + 0.587 * px[i + 1] + 0.114 * px[i + 2];
+  const darkScreen = lum / (px.length / 64) < 128;
+  for (let i = 0; i < px.length; i += 4) {
+    const text = darkScreen ? Math.min(px[i], px[i + 1], px[i + 2]) >= cutoff : Math.max(px[i], px[i + 1], px[i + 2]) <= 255 - cutoff;
+    px[i] = px[i + 1] = px[i + 2] = text ? 0 : 255;
+    px[i + 3] = 255;
+  }
+  ctx.putImageData(d, 0, 0);
+  return c;
+}
+
+$('shots').addEventListener('change', async () => {
+  const files = [...$('shots').files];
+  if (!files.length) return;
+  const msg = (t) => ($('shotMsg').textContent = t);
+  $('shots').disabled = true;
+  try {
+    msg('Loading the reader…');
+    const worker = await getWorker();
+    const texts = [[], []]; // one reading per cut-off
+    for (const [k, f] of files.entries()) {
+      msg(`Reading screenshot ${k + 1} of ${files.length}…`);
+      const url = URL.createObjectURL(f);
+      const img = new Image();
+      await new Promise((res, rej) => { img.onload = res; img.onerror = () => rej(new Error(`${f.name} isn't an image this browser can open.`)); img.src = url; });
+      for (const [j, cutoff] of [170, 200].entries()) texts[j].push((await worker.recognize(cleanForOcr(img, cutoff))).data.text);
+      URL.revokeObjectURL(url);
+    }
+    const { splits, check } = agree(parseSplits(texts[0].join('\n')), parseSplits(texts[1].join('\n')));
+    const n = fillGrid(splits, true, check);
+    const k = Object.keys(check).length;
+    msg(!n ? "Couldn't find split times in those screenshots. Try a closer screenshot, or type them in."
+      : `Read ${n} of ${SEGMENTS.length} times.` + (k ? ` ${k} ${k === 1 ? 'box is' : 'boxes are'} highlighted to check.` : ' Check them below.'));
+  } catch (err) {
+    msg(err.message || String(err));
+  }
+  $('shots').disabled = false;
+  $('shots').value = '';
+});
+
 $('form').addEventListener('submit', async (e) => {
   e.preventDefault();
   const file = $('fit').files[0];
   if (!file) return say('Choose your .fit file first.', true);
   const runKm = Number($('runkm').value);
   if (!(runKm >= 0.5 && runKm <= 1.5)) return say('Run lap length should be between 0.50 and 1.50 km (usually 1.00).', true);
-  const splits = parseSplits($('splits').value);
+  const splits = readGrid();
+  if ($('grid').querySelector('input.bad')) return say('Some split boxes hold something that isn\'t a time (marked). Use m:ss, e.g. 4:35.', true);
   const found = splits.runs.filter((x) => x != null).length;
-  if (found < 8) return say(`Found ${found} of 8 run times in the splits. Paste all 8 runs ("Run 1  3:39" and so on).`, true);
+  if (found < 8) return say(`${found} of 8 run times filled in. Add all 8 runs: from screenshots, by typing them, or by pasting text.`, true);
   $('go').disabled = true;
   say('Reading the file…');
   try {
