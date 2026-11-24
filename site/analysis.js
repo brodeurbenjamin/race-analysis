@@ -38,15 +38,26 @@ export function toSeconds(t) {
 
 export const clock = (s) => (s == null ? '–' : `${Math.floor(s / 60)}:${String(Math.round(s % 60)).padStart(2, '0')}`);
 
-// Official splits from pasted text: a CSV like "Run 1,run,3:39,219" or lines
-// copied from the results page ("Run 1  3:39", "SkiErg 00:04:35"). Takes the
-// first time on each line whose name is a run, a station or Roxzone.
-// Returns { runs: [8 seconds|null], stations: { name: seconds }, roxzone }.
+// A time read from a screenshot can have letter-for-digit slips ("O4:43",
+// "04:4l"); fix those in anything shaped like a time before reading it.
+const fixDigits = (tok) => (/^[\dOoIl|]{1,2}:[\dOoIl|]{2}(:[\dOoIl|]{2})?$/.test(tok) ? tok.replace(/[Oo]/g, '0').replace(/[Il|]/g, '1') : tok);
+
+// Official splits from pasted text, a CSV like "Run 1,run,3:39,219", lines
+// copied from a results page ("Run 1  3:39", "SkiErg 00:04:35") or text read
+// from screenshots ("Run 1 PB 03:44 451": the rank after the time is ignored).
+// Takes the first time on each line whose name is a run, a station, Roxzone or
+// the overall time ("Overall", "Total", "Finish"). Lines like "Avg Run" are
+// skipped. Repeated lines (overlapping screenshots) just agree.
+// Returns { runs: [8 seconds|null], stations: { name: seconds }, roxzone, overall }.
 export function parseSplits(text) {
-  const out = { runs: Array(8).fill(null), stations: {}, roxzone: null };
+  const out = { runs: Array(8).fill(null), stations: {}, roxzone: null, overall: null };
   for (const line of String(text).split(/\r?\n/)) {
-    const time = line.split(/[\s,;\t|]+/).map(toSeconds).find((x) => x != null);
+    const time = line.split(/[\s,;\t]+/).map(fixDigits).map(toSeconds).find((x) => x != null);
     if (time == null) continue;
+    if (/^\s*(overall|total|finish)/i.test(line)) {
+      out.overall = time;
+      continue;
+    }
     const run = line.match(/\brun\s*([1-8])\b/i);
     if (run) {
       out.runs[+run[1] - 1] = time;
