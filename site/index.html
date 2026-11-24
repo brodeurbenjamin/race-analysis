@@ -1,0 +1,238 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<title>Race Analysis · Hybrid_by_Ben</title>
+<meta name="description" content="Line up your Garmin file with your official HYROX splits. Runs in your browser; nothing is uploaded.">
+<style>
+  :root {
+    --bg:#f6f7f9; --card:#fff; --text:#16181d; --muted:#6a7280; --line:#e3e6eb;
+    --accent:#e4572e; --mark:#e4572e; --warn:#9a5b00; --warn-bg:#fff3d6;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg:#0e1116; --card:#171b22; --text:#eef0f3; --muted:#8e97a6; --line:#262c36;
+            --accent:#ff7a50; --mark:#ec6438; --warn:#f0b44c; --warn-bg:#2a2214; }
+  }
+  * { box-sizing:border-box } [hidden] { display:none !important }
+  body { margin:0; background:var(--bg); color:var(--text);
+         font:15px/1.45 system-ui,-apple-system,Segoe UI,Roboto,sans-serif }
+  .wrap { max-width:980px; margin:0 auto; padding:20px 16px 60px }
+  .crumb { font-size:13px; margin:0 0 12px } .crumb a { color:var(--muted); text-decoration:none }
+  h1 { font-size:24px; margin:0 0 2px } h2 { font-size:16px; margin:0 0 12px } h3 { font-size:14px; margin:0 0 6px }
+  .sub { color:var(--muted); margin:0 0 20px; max-width:65ch }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:16px; margin-bottom:16px }
+  label { display:block; font-size:13px; color:var(--muted); margin-bottom:4px }
+  input[type=file] { font:inherit; max-width:100% }
+  textarea { width:100%; min-height:150px; padding:10px; border:1px solid var(--line); border-radius:8px;
+             background:var(--bg); color:var(--text); font:13px/1.4 ui-monospace,Menlo,monospace }
+  .grid2 { display:grid; gap:16px; grid-template-columns:repeat(auto-fit,minmax(280px,1fr)) }
+  .grid2 > div { min-width:0 }
+  button { padding:11px 18px; border:0; border-radius:8px; background:var(--accent); color:#fff;
+           font:inherit; font-weight:600; cursor:pointer }
+  button:disabled { opacity:.5; cursor:not-allowed }
+  :focus-visible { outline:2px solid var(--accent); outline-offset:2px }
+  .note { color:var(--muted); font-size:13px; margin:8px 0 0 }
+  .err { color:var(--accent); font-weight:600 }
+  .privacy { font-size:13px; color:var(--muted); margin:0 0 16px }
+  .scroll { overflow-x:auto }
+  table { width:100%; border-collapse:collapse; font-variant-numeric:tabular-nums; font-size:14px }
+  th, td { padding:8px 6px; text-align:right; border-bottom:1px solid var(--line); white-space:nowrap }
+  th:first-child, td:first-child { text-align:left }
+  th { font-size:12px; color:var(--muted); font-weight:600 }
+  tr.suspect td { color:var(--muted) }
+  .flag { display:inline-block; font-size:11px; font-weight:600; color:var(--warn); background:var(--warn-bg);
+          border-radius:999px; padding:1px 8px; margin-left:6px; white-space:nowrap }
+  .tiles { display:grid; gap:12px; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); margin-bottom:16px }
+  .tile { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:12px 14px }
+  .tile b { display:block; font-size:22px; font-variant-numeric:tabular-nums }
+  .tile span { font-size:12px; color:var(--muted) }
+  .charts { display:grid; gap:16px; grid-template-columns:repeat(auto-fit,minmax(280px,1fr)) }
+  .chart { min-width:0 }
+  .chart svg { display:block; width:100%; height:auto; overflow:visible }
+  .chart .axis { stroke:var(--line) } .chart text { fill:var(--muted); font-size:11px }
+  .chart .ln { fill:none; stroke:var(--mark); stroke-width:2 }
+  .chart .pt { fill:var(--mark); stroke:var(--card); stroke-width:2 }
+  .chart .hit { fill:transparent; cursor:default }
+  .chart .val { fill:var(--text); font-size:11px; font-weight:600 }
+  .tip { position:fixed; pointer-events:none; background:var(--text); color:var(--card); font-size:12px;
+         padding:6px 8px; border-radius:6px; z-index:5; max-width:220px }
+  ul.ins { margin:0; padding-left:18px } ul.ins li { margin:6px 0 }
+  footer { color:var(--muted); font-size:12px; text-align:center; margin-top:28px }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <p class="crumb"><a href="/">← Hybrid_by_Ben</a></p>
+  <h1>Race Analysis</h1>
+  <p class="sub">Line up your Garmin file with your official HYROX splits: pace, heart rate, power and stride for every run, and heart rate for every station.</p>
+  <p class="privacy">🔒 Everything happens on this device. Your file and splits are never uploaded or saved.</p>
+
+  <form class="card" id="form" novalidate>
+    <div class="grid2">
+      <div>
+        <label for="fit">Garmin activity file (.fit)</label>
+        <input type="file" id="fit" accept=".fit">
+        <p class="note">Garmin Connect → the activity → ⚙ → Export Original. Unzip it if needed.</p>
+      </div>
+      <div>
+        <label for="splits">Official splits</label>
+        <textarea id="splits" placeholder="Paste from the results page, one per line, e.g.&#10;Run 1  3:39&#10;SkiErg  4:35&#10;Run 2  4:39&#10;Sled Push  3:48&#10;…&#10;Roxzone  6:51"></textarea>
+      </div>
+    </div>
+    <p style="margin:14px 0 0"><button type="submit" id="go">Analyse</button></p>
+    <p class="note" id="msg" role="status"></p>
+  </form>
+
+  <div id="out" hidden>
+    <div class="tiles" id="tiles"></div>
+
+    <div class="card">
+      <h2>What stands out</h2>
+      <ul class="ins" id="insights"></ul>
+    </div>
+
+    <div class="card">
+      <h2>Runs</h2>
+      <div class="charts" id="charts"></div>
+      <p class="note">* Left out of the charts: its official time looks like a short course (timing mat layout). It's still in the table. Each run is 1 km, so the official time gives your true pace. The watch misjudges distance indoors by a different amount every run, so its power and step length are corrected to that true pace. Heart rate and cadence come straight from the watch.</p>
+    </div>
+
+    <div class="card">
+      <h2>Runs table</h2>
+      <div class="scroll"><table id="runs"></table></div>
+    </div>
+
+    <div class="card">
+      <h2>Stations</h2>
+      <div class="scroll"><table id="stations"></table></div>
+      <p class="note">Wrist heart rate can't follow arm-heavy or bouncing moves (SkiErg, sled push, burpee broad jumps, lunges); those readings are marked.</p>
+    </div>
+
+    <div class="card">
+      <h2>How the watch laps were matched</h2>
+      <div class="scroll"><table id="laps"></table></div>
+      <p class="note">Runs are the long laps at running cadence; each station is the longest lap between two runs. Watch laps are button presses, so they differ a little from the official mats.</p>
+    </div>
+  </div>
+
+  <footer>© 2026 Hybrid_by_Ben. All rights reserved.</footer>
+</div>
+<div class="tip" id="tip" hidden></div>
+
+<script type="module">
+// Garmin's own FIT reader, pinned. It runs here in the browser on the file you
+// pick; nothing is sent anywhere.
+import { Decoder, Stream } from 'https://cdn.jsdelivr.net/npm/@garmin/fitsdk@21.222.0/src/index.js';
+import { parseSplits, fromFitMessages, analyse, clock } from './analysis.js';
+
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
+const fmt = (v, d = 0) => (v == null ? '–' : v.toFixed(d));
+const say = (t, err) => { $('msg').textContent = t; $('msg').className = 'note' + (err ? ' err' : ''); };
+
+$('form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const file = $('fit').files[0];
+  if (!file) return say('Choose your .fit file first.', true);
+  const splits = parseSplits($('splits').value);
+  const found = splits.runs.filter((x) => x != null).length;
+  if (found < 8) return say(`Found ${found} of 8 run times in the splits. Paste all 8 runs ("Run 1  3:39" and so on).`, true);
+  $('go').disabled = true;
+  say('Reading the file…');
+  try {
+    const dec = new Decoder(Stream.fromArrayBuffer(await file.arrayBuffer()));
+    if (!dec.isFIT()) throw new Error("That file isn't a Garmin .fit file.");
+    const { messages, errors } = dec.read({ convertDateTimesToDates: true });
+    if (errors.length && !messages.recordMesgs?.length) throw new Error(`Couldn't read the file (${errors[0].message}).`);
+    const a = analyse(fromFitMessages(messages), splits);
+    render(a);
+    say(a.match.ok ? '' : 'Some laps couldn\'t be matched to runs and stations; check the lap table at the bottom.', !a.match.ok);
+  } catch (err) {
+    say(err.message || String(err), true);
+  }
+  $('go').disabled = false;
+});
+
+function render(a) {
+  $('out').hidden = false;
+  const ok = a.runs.filter((r) => !r.suspect);
+  const avgOf = (k) => { const v = ok.map((r) => r[k]).filter((x) => x != null); return v.length ? v.reduce((s, x) => s + x, 0) / v.length : null; };
+  $('tiles').innerHTML = [
+    ['Runs', clock(a.totals.runs)], ['Stations', clock(a.totals.stations)], ['Roxzone', clock(a.totals.roxzone)],
+    ['Avg run HR', `${fmt(avgOf('hr'))} bpm`], ['Avg run power', `${fmt(avgOf('power'))} W`], ['Avg step', `${fmt(avgOf('step'), 2)} m`],
+  ].map(([k, v]) => `<div class="tile"><b>${esc(v)}</b><span>${esc(k)}</span></div>`).join('');
+  $('insights').innerHTML = a.insights.map((s) => `<li>${esc(s)}</li>`).join('') || '<li>Not enough comparable runs for findings.</li>';
+
+  // One measure per chart, all on the same Run 1-8 axis (no second y-axis).
+  const charts = [
+    ['Pace (official, higher = faster)', (r) => r.pace, (v) => `${clock(v)} /km`, true],
+    ['Heart rate (average)', (r) => r.hr, (v) => `${fmt(v)} bpm`],
+    ['Power (corrected)', (r) => r.power, (v) => `${fmt(v)} W`],
+    ['Heart rate per 100 W', (r) => r.hrPer100W, (v) => `${fmt(v, 1)} beats`],
+    ['Step length (true)', (r) => r.step, (v) => `${fmt(v, 2)} m`],
+    ['Cadence', (r) => r.spm, (v) => `${fmt(v)} spm`],
+  ];
+  $('charts').innerHTML = charts.map(([title, get, label, invert]) => chart(title, a.runs, get, label, invert)).join('');
+
+  $('runs').innerHTML = `<tr><th>Run</th><th>Official</th><th>km/h</th><th>HR avg</th><th>HR last min</th><th>HR max</th><th>spm</th><th>Step</th><th>Power</th><th>HR/100 W</th><th>Watch power</th><th>Watch dist.</th></tr>` +
+    a.runs.map((r) => `<tr class="${r.suspect ? 'suspect' : ''}"><td>${esc(r.name)}${r.suspect ? '<span class="flag">⚠ short course?</span>' : ''}</td>
+      <td>${clock(r.official)}</td><td>${fmt(r.kmh, 1)}</td><td>${fmt(r.hr)}</td><td>${fmt(r.hrLate)}</td><td>${fmt(r.hrMax)}</td>
+      <td>${fmt(r.spm)}</td><td>${fmt(r.step, 2)} m</td><td>${fmt(r.power)} W</td><td>${fmt(r.hrPer100W, 1)}</td>
+      <td>${fmt(r.watchPower)} W</td><td>${fmt(r.watchDist)} m</td></tr>`).join('');
+
+  $('stations').innerHTML = `<tr><th>Station</th><th>Official</th><th>HR avg</th><th>HR max</th></tr>` +
+    a.stations.map((s) => `<tr><td>${esc(s.name)}</td><td>${clock(s.official)}</td>
+      <td>${fmt(s.hr)}${s.hr != null && !s.hrReliable ? '<span class="flag">⚠ wrist HR unreliable</span>' : ''}</td><td>${fmt(s.hrMax)}</td></tr>`).join('');
+
+  $('laps').innerHTML = `<tr><th>Segment</th><th>Watch lap</th><th>Watch time</th><th>Official</th></tr>` +
+    [...a.runs.map((r) => [r.name, r.lap, r.watchTime, r.official]), ...a.stations.map((s) => [s.name, s.lap, s.watchTime, s.official])]
+      .map(([n, lap, w, o]) => `<tr><td>${esc(n)}</td><td>${lap == null ? '<span class="flag">⚠ not found</span>' : `#${lap + 1}`}</td><td>${clock(w)}</td><td>${clock(o)}</td></tr>`).join('');
+}
+
+// A small line chart: x = Run 1..8, one series. A flagged run (e.g. a short
+// course) is left out so it can't stretch the scale, and its x label gets a *;
+// it stays in the table. Every point has a hover readout; the runs table is
+// the table view.
+function chart(title, runs, get, label, invert) {
+  const W = 300, H = 150, L = 6, R = 6, T = 18, B = 22;
+  const vals = runs.map((r) => (r.suspect ? null : get(r)));
+  const v = vals.filter((x) => x != null);
+  if (!v.length) return `<div class="chart"><h3>${esc(title)}</h3><p class="note">Not in this file.</p></div>`;
+  let lo = Math.min(...v), hi = Math.max(...v);
+  const pad = (hi - lo) * 0.15 || Math.abs(hi) * 0.05 || 1;
+  lo -= pad; hi += pad;
+  const x = (i) => L + (i * (W - L - R)) / (runs.length - 1);
+  const y = (val) => (invert ? T + ((val - lo) / (hi - lo)) * (H - T - B) : H - B - ((val - lo) / (hi - lo)) * (H - T - B));
+  const pts = vals.map((val, i) => (val == null ? null : [x(i), y(val), val, i]));
+  const path = pts.filter((p) => p && !runs[p[3]].suspect).map((p, k) => `${k ? 'L' : 'M'}${p[0].toFixed(1)},${p[1].toFixed(1)}`).join('');
+  const best = pts.filter((p) => p && !runs[p[3]].suspect);
+  const top = invert ? best.reduce((a, b) => (b[2] < a[2] ? b : a), best[0]) : best.reduce((a, b) => (b[2] > a[2] ? b : a), best[0]);
+  return `<div class="chart"><h3>${esc(title)}</h3>
+    <svg viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(title)} for runs 1 to 8">
+      <line class="axis" x1="${L}" x2="${W - R}" y1="${H - B}" y2="${H - B}"/>
+      ${runs.map((r, i) => `<text x="${x(i)}" y="${H - 6}" text-anchor="middle">${i + 1}${r.suspect ? '*' : ''}</text>`).join('')}
+      <path class="ln" d="${path}"/>
+      ${pts.filter(Boolean).map((p) => `<circle class="pt" cx="${p[0]}" cy="${p[1]}" r="4"/>`).join('')}
+      ${top ? `<text class="val" x="${top[0]}" y="${top[1] - 8}" text-anchor="middle">${esc(label(top[2]))}</text>` : ''}
+      ${pts.filter(Boolean).map((p) => `<rect class="hit" x="${p[0] - 16}" y="${T - 10}" width="32" height="${H - T - B + 20}" data-tip="${esc(`${runs[p[3]].name}: ${label(p[2])}`)}"/>`).join('')}
+    </svg></div>`;
+}
+
+// Hover readout for chart points (mouse and touch).
+const tip = $('tip');
+const show = (e) => {
+  const t = e.target.closest('[data-tip]');
+  if (!t) { tip.hidden = true; return; }
+  tip.textContent = t.dataset.tip;
+  tip.hidden = false;
+  const p = e.touches ? e.touches[0] : e;
+  tip.style.left = Math.min(p.clientX + 12, innerWidth - 230) + 'px';
+  tip.style.top = p.clientY + 12 + 'px';
+};
+$('charts').addEventListener('pointermove', show);
+$('charts').addEventListener('pointerleave', () => { tip.hidden = true; });
+</script>
+</body>
+</html>
