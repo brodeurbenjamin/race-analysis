@@ -13,10 +13,8 @@
  * cadence are measured directly and are the trustworthy channels. Wrist heart
  * rate is unreliable on SkiErg, sled push, burpee broad jumps and lunges.
  *
- * Courses differ: a venue's run lap may not be exactly 1 km, so each race has
- * a run length (default 1 km). Comparisons between races lean on relative
- * measures (run fade R2 -> R7, each run vs the race's own R2-R7 average) that
- * a uniformly long or short course doesn't distort.
+ * Every HYROX run is 1 km. Comparisons between races also use relative
+ * measures (run fade R2 -> R7, each run vs the race's own R2-R7 average).
  */
 
 export const STATIONS = ['SkiErg', 'Sled Push', 'Sled Pull', 'Burpee Broad Jumps', 'Row', 'Farmers Carry', 'Sandbag Lunges', 'Wall Balls'];
@@ -155,8 +153,8 @@ const inLap = (records, lap) => records.filter((r) => r.t >= lap.start && r.t < 
 // Everything the page shows. Runs: official time and true pace, average and
 // last-60-s HR, cadence, true step length, watch vs corrected power, HR per
 // 100 W. Stations: official time, HR (flagged where wrist HR is unreliable).
-// runKm: the course's run lap length (default 1 km).
-export function analyse(fit, splits, { runKm = 1 } = {}) {
+export function analyse(fit, splits) {
+  const runKm = 1; // every HYROX run is 1 km
   const match = matchLaps(fit.laps, { runs: splits.runs, stations: STATIONS.map((n) => splits.stations[n]) });
   const runs = match.runs.map((lap, k) => {
     const rr = inLap(fit.records, lap);

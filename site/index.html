@@ -114,9 +114,7 @@
       <div><label for="rname">Race name</label><input type="text" id="rname" maxlength="30" placeholder="e.g. Boston Open"></div>
       <div><label for="division">Division</label>
         <select id="division"><option value="open">Open</option><option value="pro">Pro</option><option value="doubles">Doubles</option><option value="relay">Relay</option></select></div>
-      <div><label for="runkm">Run lap length (km)</label><input type="number" id="runkm" value="1.00" min="0.5" max="1.5" step="0.01" inputmode="decimal"></div>
     </div>
-    <p class="note" style="margin:-6px 0 14px">Courses differ. Leave 1.00 unless you know this venue's run lap was longer or shorter; it sets your true pace, power and step length.</p>
     <div style="margin-bottom:16px">
       <label for="fit">Garmin activity file (.fit)</label>
       <input type="file" id="fit" accept=".fit">
@@ -129,7 +127,7 @@
       <input type="file" id="shots" accept="image/*" multiple class="vh">
       <span class="note" id="shotMsg" style="margin:0"></span>
     </p>
-    <p class="note" style="margin:0 0 12px">Screenshot your results (the HYROX app's splits list works well; take two if it doesn't fit on one screen, overlapping is fine) and pick them all at once. They're read on this device and never uploaded. The first time, the reader downloads about 10 MB from a public code library. Always check the times below.</p>
+    <p class="note" style="margin:0 0 12px">Screenshot your results (the HYROX app's splits list works well; take two if it doesn't fit on one screen, overlapping is fine) and pick them all at once. They're read on this device and never uploaded. Always check the times below.</p>
     <div class="splits" id="grid"></div>
     <p class="note" id="sumMsg"></p>
     <details style="margin-top:10px">
@@ -157,7 +155,7 @@
       <h2>Runs</h2>
       <p id="cmpKey" style="margin:0 0 10px"></p>
       <div class="charts" id="cmpCharts"></div>
-      <p class="note">Each race's short-course runs (usually Run 1) are left out of its lines. <b>Pace vs own average</b> compares each run with that race's Runs 2–7 average, so a course whose run lap isn't exactly 1 km doesn't distort it. Power is corrected to each race's true pace and is approximate.</p>
+      <p class="note">Each race's short-course runs (usually Run 1) are left out of its lines. <b>Pace vs own average</b> compares each run with that race's Runs 2–7 average. Power is corrected to each race's true pace and is approximate.</p>
     </div>
     <div class="card">
       <h2>Runs table</h2>
@@ -411,8 +409,6 @@ $('form').addEventListener('submit', async (e) => {
   e.preventDefault();
   const file = $('fit').files[0];
   if (!file) return say('Choose your .fit file first.', true);
-  const runKm = Number($('runkm').value);
-  if (!(runKm >= 0.5 && runKm <= 1.5)) return say('Run lap length should be between 0.50 and 1.50 km (usually 1.00).', true);
   const splits = readGrid();
   if ($('grid').querySelector('input.bad')) return say('Some split boxes hold something that isn\'t a time (marked). Use m:ss, e.g. 4:35.', true);
   const found = splits.runs.filter((x) => x != null).length;
@@ -425,7 +421,7 @@ $('form').addEventListener('submit', async (e) => {
     const { messages, errors } = dec.read({ convertDateTimesToDates: true });
     if (errors.length && !messages.recordMesgs?.length) throw new Error(`Couldn't read the file (${errors[0].message}).`);
     const fit = fromFitMessages(messages);
-    const a = analyse(fit, splits, { runKm });
+    const a = analyse(fit, splits);
     const name = $('rname').value.trim().replace(/\s+/g, ' ').slice(0, 30) || `Race on ${dateLabel(fit.start)}`;
     current = summarise(a, { id: `${Date.now()}`, name, division: $('division').value, date: fit.start.toISOString() });
     $('cmp').hidden = true;
@@ -441,7 +437,7 @@ $('form').addEventListener('submit', async (e) => {
 
 function render(a) {
   $('out').hidden = false;
-  $('outTitle').textContent = `${a.name} · ${DIVISIONS[a.division] || ''} · ${dateLabel(a.date)}${a.runKm !== 1 ? ` · run lap ${a.runKm.toFixed(2)} km` : ''}`;
+  $('outTitle').textContent = `${a.name} · ${DIVISIONS[a.division] || ''} · ${dateLabel(a.date)}`;
   const ok = a.runs.filter((r) => !r.suspect);
   const avgOf = (k) => { const v = ok.map((r) => r[k]).filter((x) => x != null); return v.length ? v.reduce((s, x) => s + x, 0) / v.length : null; };
   $('tiles').innerHTML = [
@@ -538,7 +534,7 @@ function renderCompare() {
     ['Division', (r) => DIVISIONS[r.division] || ''], ['Date', (r) => dateLabel(r.date)],
     ['Total (sum of splits)', (r) => hms(raceTotal(r))], ['Runs', (r) => clock(r.totals.runs)],
     ['Stations', (r) => clock(r.totals.stations)], ['Roxzone', (r) => clock(r.totals.roxzone)],
-    ['Run fade (R2 → R7)', (r) => fmtFade(r.fade)], ['Run lap length', (r) => `${r.runKm.toFixed(2)} km`],
+    ['Run fade (R2 → R7)', (r) => fmtFade(r.fade)],
   ];
   $('cmpTotals').innerHTML = `<tr><th></th>${races.map((r) => `<th>${esc(r.name)}</th>`).join('')}</tr>` +
     rows.map(([k, f]) => `<tr><td>${esc(k)}</td>${races.map((r) => `<td>${esc(f(r))}</td>`).join('')}</tr>`).join('');
